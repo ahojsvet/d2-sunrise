@@ -1,120 +1,136 @@
 cmake_minimum_required(VERSION 3.31)
 project(Sunrise CXX)
 
+if (NOT DEFINED BUILD_OUTPUT_DIR OR "${BUILD_OUTPUT_DIR}" STREQUAL "")
+    set(BUILD_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/build/x64" CACHE PATH "Path to bin directory of gamedata")
+endif ()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(XWIN_SDK_VERSION "10.0.26100" CACHE STRING "xwin SDK Version")
 
 file(GLOB_RECURSE SUNRISE_SOURCES CONFIGURE_DEPENDS
-    "Sunrise/src/*.cpp"
-    "Sunrise/src/*.h"
+        "Sunrise/src/*.cpp"
+        "Sunrise/src/*.h"
 )
 file(GLOB_RECURSE VENDOR_SOURCES CONFIGURE_DEPENDS
-    "Sunrise/vendor/detours/*.cpp"
-    "Sunrise/vendor/detours/*.h"
-    "Sunrise/vendor/imgui/*.cpp"
-    "Sunrise/vendor/imgui/*.h"
+        "Sunrise/vendor/detours/*.cpp"
+        "Sunrise/vendor/detours/*.h"
+        "Sunrise/vendor/imgui/*.cpp"
+        "Sunrise/vendor/imgui/*.h"
 )
 file(GLOB_RECURSE RESOURCE_FILES CONFIGURE_DEPENDS
-    "Sunrise/resources/*.rc"
-    "Sunrise/resources/*.h"
-    "Sunrise/resources/*.json"
+        "Sunrise/resources/*.rc"
+        "Sunrise/resources/*.h"
+        "Sunrise/resources/*.json"
 )
 
 add_library(steam_api64 SHARED
-    ${SUNRISE_SOURCES}
-    ${VENDOR_SOURCES}
-    ${RESOURCE_FILES}
+        ${SUNRISE_SOURCES}
+        ${VENDOR_SOURCES}
+        ${RESOURCE_FILES}
+)
+
+target_compile_definitions(steam_api64 PRIVATE
+        DEFAULT_PLAYER_NAME=\"${DEFAULT_PLAYER_NAME}\"
+)
+
+add_custom_command(
+        TARGET steam_api64 POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:steam_api64>
+        "${BUILD_OUTPUT_DIR}/$<TARGET_FILE_NAME:steam_api64>"
+        COMMENT "Copying steam_api64 to ${BUILD_OUTPUT_DIR}"
 )
 
 set_property(TARGET steam_api64 PROPERTY
-    MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
 )
 
 include(CheckIPOSupported)
 check_ipo_supported(RESULT lto_supported)
-if(lto_supported)
+if (lto_supported)
     set_property(TARGET steam_api64 APPEND PROPERTY
-        INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
+            INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE
     )
-endif()
+endif ()
 target_include_directories(steam_api64
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Sunrise/src"
+        PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Sunrise/src"
 )
 
 # sunrise.rc names its payloads relative to itself, so its directory has to be on the include path.
 target_include_directories(steam_api64
-    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Sunrise/resources"
+        PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/Sunrise/resources"
 )
 
 target_include_directories(steam_api64 SYSTEM PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/Sunrise/vendor/detours"
-    "${CMAKE_CURRENT_SOURCE_DIR}/Sunrise/vendor/imgui"
-    "${CMAKE_CURRENT_SOURCE_DIR}/Sunrise/vendor/imgui/backends"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Sunrise/vendor/detours"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Sunrise/vendor/imgui"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Sunrise/vendor/imgui/backends"
 )
 
-if(DEFINED XWIN_DIR)
+if (DEFINED XWIN_DIR)
     target_include_directories(steam_api64 SYSTEM PRIVATE
-        "${XWIN_DIR}/sdk/Include/${XWIN_SDK_VERSION}/um"
-        "${XWIN_DIR}/sdk/Include/${XWIN_SDK_VERSION}/shared"
+            "${XWIN_DIR}/sdk/Include/${XWIN_SDK_VERSION}/um"
+            "${XWIN_DIR}/sdk/Include/${XWIN_SDK_VERSION}/shared"
     )
-endif()
+endif ()
 
 target_compile_definitions(steam_api64 PRIVATE
-    WIN32
-    _WINDOWS
-    _USRDLL
-    WIN32_LEAN_AND_MEAN
-    NOMINMAX
-    UNICODE
-    _UNICODE
-    _WINSOCK_DEPRECATED_NO_WARNINGS
-    $<$<CONFIG:Debug>:_DEBUG>
-    $<$<CONFIG:Release>:NDEBUG>
-    IMGUI_USER_CONFIG="core/ui/imgui_user_config.h"
+        WIN32
+        _WINDOWS
+        _USRDLL
+        WIN32_LEAN_AND_MEAN
+        NOMINMAX
+        UNICODE
+        _UNICODE
+        _WINSOCK_DEPRECATED_NO_WARNINGS
+        $<$<CONFIG:Debug>:_DEBUG>
+        $<$<CONFIG:Release>:NDEBUG>
+        IMGUI_USER_CONFIG="core/ui/imgui_user_config.h"
 )
 
-if(MSVC OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+if (MSVC OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     # Clang warnings are more strict the MSVC I guess, this only works on real clang
-    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
         list(APPEND STRICT_WARNING_FLAGS
-            -Wno-unused-const-variable
-            -Wno-unused-function
-            -Wno-braced-scalar-init
-            -Wno-missing-braces
-            -Wno-missing-designated-field-initializers
-            -Wno-cast-function-type-mismatch
+                -Wno-unused-const-variable
+                -Wno-unused-function
+                -Wno-braced-scalar-init
+                -Wno-missing-braces
+                -Wno-missing-designated-field-initializers
+                -Wno-cast-function-type-mismatch
         )
-    endif()
+    endif ()
 
     set_source_files_properties(${SUNRISE_SOURCES} PROPERTIES
-        COMPILE_OPTIONS "${STRICT_WARNING_FLAGS}"
+            COMPILE_OPTIONS "${STRICT_WARNING_FLAGS}"
     )
     set_source_files_properties(${VENDOR_SOURCES} PROPERTIES
-        COMPILE_OPTIONS "/W3"
+            COMPILE_OPTIONS "/W3"
     )
-endif()
+endif ()
 
-if(CMAKE_HOST_LINUX AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+if (CMAKE_HOST_LINUX AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(steam_api64 PRIVATE
-        $<$<CONFIG:Debug>:/clang:-gdwarf>
-        $<$<CONFIG:Debug>:/clang:-g>
+            $<$<CONFIG:Debug>:/clang:-gdwarf>
+            $<$<CONFIG:Debug>:/clang:-g>
     )
 
     target_link_options(steam_api64 PRIVATE
-        $<$<CONFIG:Debug>:/DEBUG:DWARF>
+            $<$<CONFIG:Debug>:/DEBUG:DWARF>
     )
-endif()
+endif ()
 
 target_link_libraries(steam_api64 PRIVATE
-    kernel32 bcrypt user32 gdi32 dwmapi
-    d3dcompiler shell32 ws2_32 synchronization
-    windowscodecs
+        kernel32 bcrypt user32 gdi32 dwmapi
+        d3dcompiler shell32 ws2_32 synchronization
+        windowscodecs
 )
 
 set_target_properties(steam_api64 PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/x64/$<CONFIG>"
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/x64/$<CONFIG>"
-    ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/x64/$<CONFIG>"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/x64/$<CONFIG>"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/x64/$<CONFIG>"
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build/x64/$<CONFIG>"
 )
